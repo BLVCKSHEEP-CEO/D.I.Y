@@ -1,6 +1,9 @@
 # D.I.Y (Do It Yourself)
 
-AI-first repair platform with a secondary community feed, built with React + Vite + Tailwind CSS.
+AI-first repair platform for both hardware and software repairs with a secondary community feed, built with React + Vite + Tailwind CSS, this project was started last year. It was not finished early due to technical difficulty, hence the use of AI to complete it.
+
+## How to use
+After following the setup below it is used 
 
 ## Setup
 
