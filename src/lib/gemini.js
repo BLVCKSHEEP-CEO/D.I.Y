@@ -1,5 +1,5 @@
 const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent';
 
 function getAssistantPrompt(problemContext) {
   return [
@@ -19,27 +19,28 @@ export async function askGeminiRepairAssistant({ messages, problemContext }) {
     throw new Error('Missing VITE_GEMINI_API_KEY. Add it to your .env file.');
   }
 
-  const contents = messages.map((message) => {
-    const parts = [];
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+  const parts = [];
 
-    if (message.text) {
-      parts.push({ text: message.text });
+  if (lastUserMessage?.text) {
+    parts.push({ text: lastUserMessage.text });
+  }
+
+  if (lastUserMessage?.imageData && lastUserMessage.imageMimeType) {
+    parts.push({
+      inline_data: {
+        mime_type: lastUserMessage.imageMimeType,
+        data: lastUserMessage.imageData
+      }
+    });
+  }
+
+  const contents = [
+    {
+      role: 'user',
+      parts: [{ text: getAssistantPrompt(problemContext) }, ...parts]
     }
-
-    if (message.role === 'user' && message.imageData && message.imageMimeType) {
-      parts.push({
-        inline_data: {
-          mime_type: message.imageMimeType,
-          data: message.imageData
-        }
-      });
-    }
-
-    return {
-      role: message.role === 'assistant' ? 'model' : 'user',
-      parts
-    };
-  });
+  ];
 
   const response = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
     method: 'POST',
@@ -47,9 +48,6 @@ export async function askGeminiRepairAssistant({ messages, problemContext }) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: getAssistantPrompt(problemContext) }]
-      },
       contents,
       generationConfig: {
         temperature: 0.4,

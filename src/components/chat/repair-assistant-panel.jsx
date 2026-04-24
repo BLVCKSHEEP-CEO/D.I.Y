@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { askGeminiRepairAssistant } from '../../lib/gemini';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { trackEvent } from '../../lib/telemetry';
+import { useAuth } from '../../context/auth-context';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const SESSION_STORE_KEY = 'diy.assistant.sessions';
 const PLAYBOOK_DRAFTS_KEY = 'diy.playbook.drafts';
+const SAFETY_CONFIRM_KEY = 'diy.safety.confirmed';
 const riskyKeywords = ['battery puncture', 'mains', 'high voltage', 'live wire', 'esd', 'short mains'];
 
 async function compressImageFile(file) {
@@ -67,6 +70,7 @@ function buildInitialMessage(problemContext) {
 }
 
 export default function RepairAssistantPanel({ title = 'Gemini Repair Assistant', problemContext = '' }) {
+  const { user } = useAuth();
   const initialMessage = useMemo(
     () => [{ id: 'init', role: 'assistant', text: buildInitialMessage(problemContext) }],
     [problemContext]
@@ -82,6 +86,78 @@ export default function RepairAssistantPanel({ title = 'Gemini Repair Assistant'
   const [error, setError] = useState('');
   const [dangerConfirmed, setDangerConfirmed] = useState(false);
   const [sessionNotice, setSessionNotice] = useState('');
+  const [safetyConfirmed, setSafetyConfirmed] = useState(false);
+  const [safetyChecked, setSafetyChecked] = useState(false);
+  const [safetySaving, setSafetySaving] = useState(false);
+  const [safetyLoading, setSafetyLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSafetyConfirmation() {
+      if (isSupabaseConfigured && user?.id) {
+        const { data, error: loadError } = await supabase
+          .from('profiles')
+          .select('safety_confirmed')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (!active) return;
+
+        if (loadError) {
+          setError('Could not load safety confirmation.');
+          trackEvent('ai_safety_load_error', { message: loadError.message });
+        }
+
+        const confirmed = Boolean(data?.safety_confirmed);
+        setSafetyConfirmed(confirmed);
+        setSafetyChecked(confirmed);
+        setSafetyLoading(false);
+        return;
+      }
+
+      const localConfirmed = window.localStorage.getItem(SAFETY_CONFIRM_KEY) === '1';
+      setSafetyConfirmed(localConfirmed);
+      setSafetyChecked(localConfirmed);
+      setSafetyLoading(false);
+    }
+
+    loadSafetyConfirmation();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  async function confirmSafetyOnce() {
+    if (safetySaving || !safetyChecked) return;
+
+    setSafetySaving(true);
+    setError('');
+
+    try {
+      if (isSupabaseConfigured && user?.id) {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ safety_confirmed: true })
+          .eq('id', user.id);
+
+        if (updateError) {
+          throw updateError;
+        }
+      }
+
+      window.localStorage.setItem(SAFETY_CONFIRM_KEY, '1');
+      setSafetyConfirmed(true);
+      setSafetyChecked(true);
+      trackEvent('ai_safety_confirmed', { userId: user?.id || 'anonymous' });
+    } catch (err) {
+      setError('Could not save safety confirmation.');
+      trackEvent('ai_safety_save_error', { message: err?.message || 'save failed' });
+    } finally {
+      setSafetySaving(false);
+    }
+  }
 
   async function onSelectImage(event) {
     const file = event.target.files?.[0];
@@ -125,6 +201,12 @@ export default function RepairAssistantPanel({ title = 'Gemini Repair Assistant'
     event.preventDefault();
     const trimmed = question.trim();
     if ((!trimmed && !imageData) || loading) return;
+
+    if (!safetyConfirmed) {
+      setError('Safety confirmation required before using Gemini.');
+      trackEvent('ai_safety_confirmation_blocked', { snippet: trimmed.slice(0, 120) });
+      return;
+    }
 
     const textForRisk = `${problemContext}\n${trimmed}`.toLowerCase();
     const risky = riskyKeywords.some((keyword) => textForRisk.includes(keyword));
@@ -207,6 +289,35 @@ export default function RepairAssistantPanel({ title = 'Gemini Repair Assistant'
 
   return (
     <section className="diy-card p-4 sm:p-5">
+      {!safetyLoading && !safetyConfirmed ? (
+        <div className="mb-4 border-2 border-black bg-white p-4 shadow-hard">
+          <h4 className="text-base font-bold uppercase tracking-wide">One-time safety confirmation</h4>
+          <p className="mt-2 text-sm">
+            Confirm you understand the risks before using Gemini. This is stored once per account.
+          </p>
+          <label className="mt-3 flex items-start gap-2 border-2 border-black bg-paper px-3 py-2 text-xs shadow-hard">
+            <input
+              type="checkbox"
+              checked={safetyChecked}
+              onChange={(event) => setSafetyChecked(event.target.checked)}
+            />
+            <span>
+              I understand risky steps (battery puncture, mains voltage, ESD) need safety controls and power isolation.
+            </span>
+          </label>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              className="pressable bg-neon px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              disabled={!safetyChecked || safetySaving}
+              onClick={confirmSafetyOnce}
+            >
+              {safetySaving ? 'Saving...' : 'Continue'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h3 className="text-xl font-bold">{title}</h3>
         <span className="sticker-tag bg-electric text-white">Gemini</span>
@@ -288,20 +399,10 @@ export default function RepairAssistantPanel({ title = 'Gemini Repair Assistant'
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
         />
-        <label className="flex items-start gap-2 border-2 border-black bg-white px-3 py-2 text-xs shadow-hard">
-          <input
-            type="checkbox"
-            checked={dangerConfirmed}
-            onChange={(event) => setDangerConfirmed(event.target.checked)}
-          />
-          <span>
-            I confirm I understand risky steps (battery puncture, mains voltage, ESD) require safety controls and power isolation.
-          </span>
-        </label>
         <div className="flex flex-wrap gap-2">
           <button
             className="pressable bg-neon px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={loading}
+            disabled={loading || !safetyConfirmed}
             type="submit"
           >
             {loading ? 'Thinking...' : 'Ask Gemini'}

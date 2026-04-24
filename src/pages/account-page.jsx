@@ -22,6 +22,7 @@ export default function AccountPage() {
   } = useAuth();
 
   const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [specialtiesInput, setSpecialtiesInput] = useState((user?.specialties || []).join(', '));
