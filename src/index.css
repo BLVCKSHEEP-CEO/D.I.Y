@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: only light;
+  }
+
+  * {
+    @apply box-border;
+  }
+
+  body {
+    @apply m-0 min-h-screen bg-paper text-ink font-sans;
+    background-image:
+      linear-gradient(to right, rgba(0, 0, 0, 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0, 0, 0, 0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  #root {
+    @apply min-h-screen;
+    background-image:
+      radial-gradient(circle at 7% 8%, rgba(4, 102, 255, 0.18), transparent 26%),
+      radial-gradient(circle at 92% 20%, rgba(255, 59, 48, 0.2), transparent 28%),
+      radial-gradient(circle at 80% 83%, rgba(32, 224, 112, 0.2), transparent 30%);
+  }
+}
+
+@layer components {
+  .pressable {
+    @apply border-2 border-black shadow-hard transition-all duration-75;
+  }
+
+  .pressable:active {
+    @apply translate-x-1 translate-y-1 shadow-none;
+  }
+
+  .sticker-tag {
+    @apply inline-flex items-center rounded-none border-2 border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide shadow-hard;
+  }
+
+  .thread-line {
+    @apply w-[3px] rounded-none;
+  }
+
+  .input-brutal {
+    @apply border-2 border-black bg-white px-3 py-2 text-sm shadow-hard outline-none;
+  }
+
+  .input-brutal:focus {
+    @apply bg-neon/20;
+  }
+
+  .flash-enter {
+    animation: flashDive 160ms linear;
+  }
+}
+
+@keyframes flashDive {
+  0% {
+    opacity: 0.4;
+    transform: scale(0.99);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

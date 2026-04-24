@@ -1,0 +1,10 @@
+{
+  "name": "D.I.Y x Horizons",
+  "short_name": "D.I.Y",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f5f2",
+  "theme_color": "#0466ff",
+  "description": "AI-first repair platform with community diagnostics and playbooks.",
+  "icons": []
+}
